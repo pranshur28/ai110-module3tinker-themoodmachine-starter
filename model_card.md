@@ -14,7 +14,7 @@ I compared both models: the rule based model and the ML (logistic regression) mo
 Classify short text messages (social media style posts) into mood labels: positive, negative, neutral, or mixed.
 
 **How it works (brief):**
-The rule based model tokenizes text, looks up each word in positive/negative word lists, and sums a score (+1 per positive word, -1 per negative word). It also handles negation: if a word like "not" or "never" appears before a sentiment word, the polarity flips. The final score maps to a label (positive if > 0, negative if < 0, neutral if 0).
+The rule based model tokenizes text, looks up each word in positive/negative word lists, and sums a score (+1 per positive word, -1 per negative word). It also handles negation: if a word like "not" or "never" appears before a sentiment word, the polarity flips. Additionally, if both positive and negative words are present in a post, it is labeled "mixed". Otherwise the net score maps to a label (positive if > 0, negative if < 0, neutral if 0).
 
 The ML model uses scikit-learn's CountVectorizer to convert each post into a bag-of-words vector, then trains a logistic regression classifier on the labeled examples to learn the mapping from word counts to mood labels.
 
@@ -48,7 +48,8 @@ Labels were chosen based on the overall emotional tone a human reader would perc
 - Each positive word adds +1, each negative word subtracts 1 from the score.
 - Negation handling: if a negation word ("not", "no", "never", "dont", etc.) appears immediately before a sentiment word, the polarity flips (e.g., "not happy" scores -1 instead of +1).
 - Preprocessing strips punctuation and normalizes repeated characters ("soooo" becomes "soo").
-- Label thresholds: score > 0 is positive, score < 0 is negative, score == 0 is neutral.
+- Mixed detection: if both positive and negative words appear in a post, the label is "mixed" regardless of net score.
+- Label thresholds (when not mixed): score > 0 is positive, score < 0 is negative, score == 0 is neutral.
 
 **Strengths of this approach:**
 - Transparent and explainable: you can see exactly which words drove the prediction.
@@ -57,8 +58,7 @@ Labels were chosen based on the overall emotional tone a human reader would perc
 - Fast and deterministic.
 
 **Weaknesses of this approach:**
-- Cannot detect sarcasm ("I love getting stuck in traffic" is predicted as positive).
-- Cannot predict "mixed" labels because it only looks at the net score, not whether both positive and negative words are present.
+- Cannot detect sarcasm ("I love getting stuck in traffic" is predicted as mixed due to "love" + "stuck", but the true label is negative).
 - Limited vocabulary: words not in the word lists are invisible to the model.
 - Negation only works for immediately adjacent words; "I don't think this is good" would not be caught.
 
@@ -81,28 +81,32 @@ Weaknesses: The 100% training accuracy is misleading. The model has likely memor
 ## 5. Evaluation
 
 **How you evaluated the model:**
-Both models were evaluated on the same 16 labeled posts from `dataset.py`.
-- Rule based model accuracy: **81%** (13/16 correct)
+Both models were evaluated on the 16 training posts (`SAMPLE_POSTS`) and a separate held-out test set of 15 posts (`TEST_POSTS`).
+
+- Rule based model accuracy on training set: **94%** (15/16 correct)
+- Rule based model accuracy on test set: **93%** (14/15 correct)
 - ML model training accuracy: **100%** (16/16 correct)
+- ML model test accuracy: **27%** (4/15 correct)
+
+The ML model's dramatic drop from 100% to 27% on the test set confirms severe overfitting due to the tiny training set. The rule based model generalizes far better because its rules are not data-dependent.
 
 **Examples of correct predictions:**
-- "I am not happy about this" -> both models correctly predicted **negative**. The rule based model handled the negation of "happy".
-- "This is not bad at all" -> both models correctly predicted **positive**. The negation of "bad" flipped the score.
-- "Had a great day with amazing friends" -> both predicted **positive**. Multiple positive words made this straightforward.
+- "I am not happy about this" -> rule based correctly predicted **negative**. The negation of "happy" flipped the score.
+- "This is not bad at all" -> rule based correctly predicted **positive**. The negation of "bad" flipped the score.
+- "Feeling tired but kind of hopeful" -> rule based correctly predicted **mixed**. Both "tired" (negative) and "hopeful" (positive) were detected, triggering the mixed label.
+- "Stressed about exams but excited to be almost done" -> rule based correctly predicted **mixed** on the test set.
 
 **Examples of incorrect predictions:**
-- "I absolutely love getting stuck in traffic" -> rule based predicted **positive** (true: negative). The model saw "love" and scored it positively, missing the sarcasm entirely. The ML model got this right because it memorized this specific example.
-- "Feeling tired but kind of hopeful" -> rule based predicted **negative** (true: mixed). The model only saw "tired" (negative) and had no mechanism to output "mixed". The ML model got this right.
-- "Lowkey stressed but kind of proud of myself" -> rule based predicted **negative** (true: mixed). Same issue: "stressed" triggered negative, and "proud" is not in the word list.
+- "I absolutely love getting stuck in traffic" -> rule based predicted **mixed** (true: negative). The model detected both "love" (positive) and "stuck" (negative), so it predicted mixed. It cannot detect that this is sarcasm.
+- "Oh wow what a great idea said no one ever" -> rule based predicted **positive** (true: negative). The sarcasm is invisible to word-level analysis; the model only saw "great".
 
 ## 6. Limitations
 
-- The dataset is very small (16 posts). Neither model would generalize well to real-world text.
+- The dataset is very small (16 training posts, 15 test posts). The rule based model generalizes well (93% test) but the ML model does not (27% test).
 - The rule based model cannot detect sarcasm, irony, or implied meaning.
-- The rule based model has no "mixed" label logic; it can only output positive, negative, or neutral.
-- The ML model's 100% accuracy is on training data only. Without a separate test set, we cannot measure true generalization.
+- The ML model severely overfits on the small training set: 100% train vs 27% test accuracy.
 - Both models only work on short English text. Longer passages, other languages, or code-switching would break them.
-- The word lists are limited; common sentiment words like "wonderful", "horrible", "anxious", or "proud" are missing.
+- The mixed detection is simplistic: any co-occurrence of positive and negative words triggers "mixed", even for sarcastic posts where the true label is negative.
 
 ## 7. Ethical Considerations
 
@@ -113,11 +117,16 @@ Both models were evaluated on the same 16 labeled posts from `dataset.py`.
 
 ## 8. Ideas for Improvement
 
-- **Add more labeled data** from diverse sources to improve generalization.
+**Completed improvements:**
+- Added "mixed" detection to the rule based model (co-occurrence of positive and negative words).
+- Expanded word lists with 10 new positive and 9 new negative words.
+- Added a held-out test set evaluation to the ML experiments.
+- Added negation-aware explanations to the rule based model.
+
+**Remaining ideas:**
+- **Add more labeled data** from diverse sources to improve ML generalization.
 - **Use TF-IDF** instead of CountVectorizer to give less weight to common words.
-- **Add a "mixed" detection rule** to the rule based model: if both positive and negative words appear, output "mixed".
-- **Expand the word lists** with more sentiment words, slang, and emoji mappings.
-- **Create a separate test set** so ML accuracy reflects real generalization, not memorization.
 - **Use a pretrained model** (e.g., a small transformer or sentiment-specific model) that understands context, sarcasm, and nuance.
 - **Add confidence scores** so users know when the model is uncertain.
 - **Improve negation handling** to work across longer phrases, not just adjacent words.
+- **Add sarcasm detection** heuristics or use contextual models to handle irony.

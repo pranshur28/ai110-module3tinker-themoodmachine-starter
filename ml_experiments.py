@@ -13,7 +13,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
-from dataset import SAMPLE_POSTS, TRUE_LABELS
+from dataset import SAMPLE_POSTS, TRUE_LABELS, TEST_POSTS, TEST_LABELS
 
 
 def train_ml_model(
@@ -130,6 +130,10 @@ if __name__ == "__main__":
 
     # Evaluate on the same dataset (training accuracy).
     evaluate_on_dataset(SAMPLE_POSTS, TRUE_LABELS, vectorizer, model)
+
+    # Evaluate on the held-out test set (generalization accuracy).
+    print("\n")
+    evaluate_on_dataset(TEST_POSTS, TEST_LABELS, vectorizer, model)
 
     # Let the user try their own examples.
     run_interactive_loop(vectorizer, model)
